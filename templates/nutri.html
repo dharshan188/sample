@@ -1,96 +1,397 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
+  <meta charset="UTF-8" />
   <title>NutriGuard AI</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
 </head>
 <body>
 
-  <div class="input-section">
-    <h2>🥗 NutriGuard AI — Smart Nutrition Recommender</h2>
+  <!-- Right-side language selector (visible, sticky) -->
+  <div class="lang-picker" id="langPicker" aria-label="Language picker">
+    <button id="langBtn" title="Choose language" aria-haspopup="true" aria-expanded="false">
+      <span class="lang-flag" id="langFlag">🌐</span>
+      <span id="currentLang" class="lang-code">EN</span>
+      <svg class="chev" width="12" height="12" viewBox="0 0 24 24" fill="none" aria-hidden>
+        <path d="M6 9l6 6 6-6" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+    </button>
 
-    <div class="user-inputs">
-      <input type="number" id="height" placeholder="Height (cm)">
-      <input type="number" id="weight" placeholder="Weight (kg)">
-      <select id="gender">
-        <option value="Male">Male ♂️</option>
-        <option value="Female">Female ♀️</option>
-      </select>
-      <input type="text" id="city" placeholder="Enter your city">
+    <div class="lang-menu" id="langMenu" role="menu" hidden>
+      <button class="lang-option" data-lang="en" role="menuitem">EN — English</button>
+      <button class="lang-option" data-lang="hi" role="menuitem">HI — हिन्दी</button>
+      <button class="lang-option" data-lang="te" role="menuitem">TE — తెలుగు</button>
     </div>
+  </div>
 
-    <div id="food-list">
-      <div class="food-item">
-        <input type="text" placeholder="Food name" class="food-name">
-        <input type="number" placeholder="Qty" class="food-qty" min="1" value="1">
+  <div class="container">
+    <div class="input-section" role="region" aria-labelledby="title">
+      <h2 id="title">🥗 NutriGuard AI — Smart Nutrition Recommender</h2>
+
+      <div class="user-inputs">
+        <input type="number" id="height" placeholder="Height (cm)" aria-label="Height">
+        <input type="number" id="weight" placeholder="Weight (kg)" aria-label="Weight">
+        <select id="gender" aria-label="Gender">
+          <option value="Male">Male ♂️</option>
+          <option value="Female">Female ♀️</option>
+        </select>
+        <input type="text" id="city" placeholder="Enter your city" aria-label="City">
+        <p class="small" id="qtyTip">Tip: Qty is interpreted as <strong>grams</strong> (e.g. 200 for 200g).</p>
+      </div>
+
+      <div id="food-list">
+        <div class="food-item">
+          <input type="text" placeholder="Food name" class="food-name" />
+          <input type="number" placeholder="Qty (g)" class="food-qty" min="1" value="100" />
+        </div>
+      </div>
+
+      <div class="controls">
+        <button id="addBtn">➕ Add Another Food</button>
+        <button id="analyzeBtn">Analyze 🍽️</button>
       </div>
     </div>
 
-    <button onclick="addFood()">➕ Add Another Food</button>
-    <button onclick="analyze()">Analyze 🍽️</button>
+    <div id="output" class="output-section" aria-live="polite"></div>
   </div>
 
-  <div id="output" class="output-section"></div>
+<script>
+/* ============================
+   Full client-side localization
+   ============================ */
 
-  <script>
-    function addFood() {
-      const list = document.getElementById("food-list");
-      const div = document.createElement("div");
-      div.classList.add("food-item");
-      div.innerHTML = `
-        <input type="text" placeholder="Food name" class="food-name">
-        <input type="number" placeholder="Qty" class="food-qty" min="1" value="1">
-      `;
-      list.appendChild(div);
+/* Translation dictionaries:
+   - UI strings
+   - nutrient labels mapping
+   - food name translations (recommendations)
+*/
+const translations = {
+  en: {
+    code: "EN", flag: "🌐",
+    title: "🥗 NutriGuard AI — Smart Nutrition Recommender",
+    heightPlaceholder: "Height (cm)",
+    weightPlaceholder: "Weight (kg)",
+    cityPlaceholder: "Enter your city",
+    namePlaceholder: "Food name",
+    qtyPlaceholder: "Qty (g)",
+    qtyTip: "Tip: Qty is interpreted as <strong>grams</strong> (e.g. 200 for 200g).",
+    addFood: "➕ Add Another Food",
+    analyze: "Analyze 🍽️",
+    weatherHeading: (city) => `✅ Weather in ${city}`,
+    totalNutrients: "📊 Total Nutrients:",
+    deficient: "🧩 Deficient Nutrients:",
+    allBalanced: "🎉 All nutrients balanced!",
+    recommendations: "🍴 Recommended Foods & Nutrients:",
+    errorPrefix: "❌",
+    need_more: (nutrient, value) => `${nutrient}: need ${value} more`,
+    nutrients: {
+      "Protein": "Protein",
+      "Vitamin C": "Vitamin C",
+      "Iron": "Iron",
+      "Calcium": "Calcium",
+      "Fiber": "Fiber"
+    },
+    foods: {
+      "Chicken": "Chicken",
+      "Eggs": "Eggs",
+      "Paneer": "Paneer",
+      "Oats": "Oats",
+      "Apple": "Apple",
+      "Carrots": "Carrots",
+      "Orange": "Orange",
+      "Guava": "Guava",
+      "Kiwi": "Kiwi",
+      "Spinach": "Spinach",
+      "Liver": "Liver",
+      "Beans": "Beans",
+      "Milk": "Milk",
+      "Curd": "Curd",
+      "Almonds": "Almonds"
     }
-
-    async function analyze() {
-      const city = document.getElementById("city").value;
-      const gender = document.getElementById("gender").value;
-      const height = document.getElementById("height").value;
-      const weight = document.getElementById("weight").value;
-      const foodNames = document.querySelectorAll(".food-name");
-      const foodQtys = document.querySelectorAll(".food-qty");
-
-      const items = [];
-      for (let i = 0; i < foodNames.length; i++) {
-        const name = foodNames[i].value.trim();
-        const qty = foodQtys[i].value;
-        if (name) items.push({ name, qty });
-      }
-
-      const res = await fetch("/analyze", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ city, gender, height, weight, items })
-      });
-
-      const data = await res.json();
-      const out = document.getElementById("output");
-
-      if (data.error) {
-        out.innerHTML = `<p style="color:red;">❌ ${data.error}</p>`;
-        return;
-      }
-
-      out.innerHTML = `
-        <h3>✅ Weather in ${city}</h3>
-        <p>🌤 ${data.weather.condition}, 🌡 ${data.weather.temp}°C, 💧 ${data.weather.humidity}%</p>
-
-        <h3>📊 Total Nutrients:</h3>
-        <ul>${Object.entries(data.total_nutrients).map(([k,v])=>`<li>${k}: ${v}</li>`).join("")}</ul>
-
-        <h3>🧩 Deficient Nutrients:</h3>
-        ${Object.keys(data.deficient).length===0
-          ? "<p>🎉 All nutrients balanced!</p>"
-          : `<ul>${Object.entries(data.deficient).map(([k,v])=>`<li>${k}: need ${v} more</li>`).join("")}</ul>`}
-
-        <h3>🍴 Recommended Foods & Nutrients:</h3>
-        <ul>${data.recommendations.map(f=>`<li>${f[0]} — ${f[1]} ${f[2]}</li>`).join("")}</ul>
-      `;
+  },
+  hi: {
+    code: "HI", flag: "🌏",
+    title: "🥗 NutriGuard AI — स्मार्ट पोषण सुझावक",
+    heightPlaceholder: "ऊँचाई (सेमी)",
+    weightPlaceholder: "वजन (किलो)",
+    cityPlaceholder: "अपने शहर का नाम डालें",
+    namePlaceholder: "खाद्य नाम",
+    qtyPlaceholder: "मात्रा (ग्राम)",
+    qtyTip: "सूचना: मात्रा ग्राम में है (उदा., 200 = 200g)।",
+    addFood: "➕ और एक जोड़ें",
+    analyze: "विश्लेषण करें 🍽️",
+    weatherHeading: (city) => `✅ मौसम — ${city}`,
+    totalNutrients: "📊 कुल पोषक तत्व:",
+    deficient: "🧩 कम पोषक तत्व:",
+    allBalanced: "🎉 सभी पोषक तत्व संतुलित हैं!",
+    recommendations: "🍴 सुझाए गए खाद्य पदार्थ और पोषक तत्व:",
+    errorPrefix: "❌",
+    need_more: (nutrient, value) => `${nutrient}: आवश्यकता ${value} अधिक`,
+    nutrients: {
+      "Protein": "प्रोटीन",
+      "Vitamin C": "विटामिन C",
+      "Iron": "आयरन",
+      "Calcium": "कैल्शियम",
+      "Fiber": "फाइबर"
+    },
+    foods: {
+      "Chicken": "चिकन",
+      "Eggs": "अंडे",
+      "Paneer": "पनीर",
+      "Oats": "ओट्स",
+      "Apple": "सेब",
+      "Carrots": "गाजर",
+      "Orange": "संतरा",
+      "Guava": "पेरिच / अमरूद", // regional variant ok
+      "Kiwi": "कीवी",
+      "Spinach": "पालक",
+      "Liver": "लीवर",
+      "Beans": "बीन्स",
+      "Milk": "दूध",
+      "Curd": "दही",
+      "Almonds": "बादाम"
     }
-  </script>
+  },
+  te: {
+    code: "TE", flag: "🌏",
+    title: "🥗 NutriGuard AI — స్మార్ట్ పోషణ సలహాదారు",
+    heightPlaceholder: "ఎత్తు (సెం.మీ)",
+    weightPlaceholder: "బరువు (kg)",
+    cityPlaceholder: "మీ నగరాన్ని నమోదు చేయండి",
+    namePlaceholder: "ఆహార పేరు",
+    qtyPlaceholder: "మొత్తం (గ్రాములు)",
+    qtyTip: "గమనిక: పరిమాణం గ్రాముల్లో (ఉదా., 200 = 200g).",
+    addFood: "➕ మరొకటి జోడించండి",
+    analyze: "విశ్లేషించు 🍽️",
+    weatherHeading: (city) => `✅ వాతావరణం — ${city}`,
+    totalNutrients: "📊 మొత్తం పోషకాలు:",
+    deficient: "🧩 లోపాలు ఉన్న పోషకాలు:",
+    allBalanced: "🎉 అన్ని పోషకాలు సమతుల్యంగా ఉన్నవి!",
+    recommendations: "🍴 సూచించిన ఆహారాలు & పోషకాలు:",
+    errorPrefix: "❌",
+    need_more: (nutrient, value) => `${nutrient}: అవసరం ${value} ఎక్కువ`,
+    nutrients: {
+      "Protein": "ప్రోటీన్",
+      "Vitamin C": "విటమిన్ C",
+      "Iron": "ఐరన్",
+      "Calcium": "కాల్షియం",
+      "Fiber": "ఫైబర్"
+    },
+    foods: {
+      "Chicken": "చికెన్",
+      "Eggs": "గుడ్లు",
+      "Paneer": "పనీరు",
+      "Oats": "ఓట్స్",
+      "Apple": "ఆపిల్",
+      "Carrots": "క్యారెట్",
+      "Orange": "ఆరెంజ్",
+      "Guava": "పెరుగు / జామ",
+      "Kiwi": "కివి",
+      "Spinach": "పాలకూర",
+      "Liver": "లివర్",
+      "Beans": "బీన్స్",
+      "Milk": "పాల",
+      "Curd": "తయాంబు / పెరుగు",
+      "Almonds": "బాదాం"
+    }
+  }
+};
+
+/* Persisted language in localStorage */
+const LS_KEY = "nutri_lang";
+let currentLang = localStorage.getItem(LS_KEY) || "en";
+
+/* Helpers to get translations easily */
+function t(key) {
+  return translations[currentLang][key];
+}
+function trNutrient(key) {
+  return translations[currentLang].nutrients[key] || key;
+}
+function trFood(key) {
+  return translations[currentLang].foods[key] || key;
+}
+
+/* UI elements */
+const langBtn = document.getElementById("langBtn");
+const langMenu = document.getElementById("langMenu");
+const currentLangEl = document.getElementById("currentLang");
+const langFlagEl = document.getElementById("langFlag");
+
+/* Setup language picker visible and interactive */
+function applyLangToPicker() {
+  currentLangEl.textContent = translations[currentLang].code;
+  langFlagEl.textContent = translations[currentLang].flag || "🌐";
+}
+applyLangToPicker();
+
+/* Open/close menu */
+langBtn.addEventListener("click", (e) => {
+  e.stopPropagation();
+  const expanded = langBtn.getAttribute("aria-expanded") === "true";
+  langBtn.setAttribute("aria-expanded", (!expanded).toString());
+  langMenu.hidden = !langMenu.hidden;
+});
+document.addEventListener("click", () => { langMenu.hidden = true; langBtn.setAttribute("aria-expanded","false"); });
+
+document.querySelectorAll(".lang-option").forEach(btn => {
+  btn.addEventListener("click", () => {
+    const lang = btn.getAttribute("data-lang");
+    setLanguage(lang);
+    langMenu.hidden = true;
+    langBtn.setAttribute("aria-expanded","false");
+  });
+});
+
+/* Apply translations to all static UI elements */
+function applyTranslations() {
+  const dict = translations[currentLang];
+  document.getElementById("title").innerHTML = dict.title;
+  document.getElementById("height").placeholder = dict.heightPlaceholder;
+  document.getElementById("weight").placeholder = dict.weightPlaceholder;
+  document.getElementById("city").placeholder = dict.cityPlaceholder;
+  document.querySelectorAll(".food-name").forEach(el => el.placeholder = dict.namePlaceholder);
+  document.querySelectorAll(".food-qty").forEach(el => el.placeholder = dict.qtyPlaceholder);
+  document.getElementById("qtyTip").innerHTML = dict.qtyTip;
+  document.getElementById("addBtn").textContent = dict.addFood;
+  document.getElementById("analyzeBtn").textContent = dict.analyze;
+  applyLangToPicker();
+}
+
+/* Set and persist language */
+function setLanguage(lang) {
+  if (!translations[lang]) lang = "en";
+  currentLang = lang;
+  localStorage.setItem(LS_KEY, lang);
+  applyTranslations();
+}
+
+/* Initial apply */
+setLanguage(currentLang);
+
+/* Add another food row */
+function addFood() {
+  const list = document.getElementById("food-list");
+  const div = document.createElement("div");
+  div.classList.add("food-item");
+  div.innerHTML = `
+    <input type="text" placeholder="${translations[currentLang].namePlaceholder}" class="food-name" />
+    <input type="number" placeholder="${translations[currentLang].qtyPlaceholder}" class="food-qty" min="1" value="100" />
+  `;
+  list.appendChild(div);
+}
+
+/* Render output fully localized */
+function escapeHtml(s){
+  return String(s).replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;").replaceAll('"',"&quot;");
+}
+
+function renderOutput(data, city) {
+  const dict = translations[currentLang];
+  const out = document.getElementById("output");
+  const weather = data.weather || null;
+  let html = "";
+
+  // Weather header (localized)
+  const weatherHeading = dict.weatherHeading(city || (weather && weather.location) || "");
+  html += `<h3>${escapeHtml(weatherHeading)}</h3>`;
+  if (weather) {
+    html += `<p>🌤 ${escapeHtml(weather.condition)}, 🌡 ${escapeHtml(String(weather.temp))}°C, 💧 ${escapeHtml(String(weather.humidity))}%</p>`;
+  }
+
+  // Total nutrients
+  html += `<h3>${dict.totalNutrients}</h3>`;
+  const totals = data.total_nutrients || {};
+  if (!Object.keys(totals).length) {
+    html += `<p>-</p>`;
+  } else {
+    html += `<ul>`;
+    for (const [k, v] of Object.entries(totals)) {
+      html += `<li><strong>${escapeHtml(trNutrient(k))}:</strong> ${escapeHtml(v)}</li>`;
+    }
+    html += `</ul>`;
+  }
+
+  // Deficiencies
+  html += `<h3>${dict.deficient}</h3>`;
+  const deficient = data.deficient || {};
+  if (!Object.keys(deficient).length) {
+    html += `<p>${dict.allBalanced}</p>`;
+  } else {
+    html += `<ul>`;
+    for (const [k, v] of Object.entries(deficient)) {
+      const label = trNutrient(k);
+      html += `<li>${escapeHtml(dict.need_more(label, v))}</li>`;
+    }
+    html += `</ul>`;
+  }
+
+  // Recommendations
+  html += `<h3>${dict.recommendations}</h3>`;
+  const recs = data.recommendations || [];
+  if (!recs.length) {
+    html += `<p>-</p>`;
+  } else {
+    html += `<ul>`;
+    recs.forEach(item => {
+      // item could be [name, amt] or [name, amt, unit] or [name, '-', '-']
+      const name = item[0] || "";
+      const amt = item[1] || "";
+      // translate food name if we have mapping
+      const nameLocal = trFood(name);
+      html += `<li>${escapeHtml(nameLocal)}${amt && amt !== "-" ? " — " + escapeHtml(amt) : ""}</li>`;
+    });
+    html += `</ul>`;
+  }
+
+  out.innerHTML = html;
+}
+
+/* POST to /analyze and render localized output */
+async function analyze() {
+  const city = document.getElementById("city").value.trim();
+  const gender = document.getElementById("gender").value;
+  const height = document.getElementById("height").value;
+  const weight = document.getElementById("weight").value;
+  const foodNames = document.querySelectorAll(".food-name");
+  const foodQtys = document.querySelectorAll(".food-qty");
+
+  const items = [];
+  for (let i = 0; i < foodNames.length; i++) {
+    const name = foodNames[i].value.trim();
+    const qty = foodQtys[i].value;
+    if (name) items.push({ name, qty });
+  }
+
+  const payload = { city, gender, height, weight, items, lang: currentLang };
+  const outEl = document.getElementById("output");
+  outEl.innerHTML = `<p>⏳ ...</p>`;
+
+  try {
+    const res = await fetch("/analyze", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    });
+    const data = await res.json();
+    if (data.error) {
+      outEl.innerHTML = `<p style="color:red;">${escapeHtml(translations[currentLang].errorPrefix)} ${escapeHtml(data.error)}</p>`;
+      return;
+    }
+    renderOutput(data, city);
+  } catch (err) {
+    outEl.innerHTML = `<p style="color:red;">${escapeHtml(translations[currentLang].errorPrefix)} ${escapeHtml(err.message || String(err))}</p>`;
+  }
+}
+
+/* wiring */
+document.getElementById("addBtn").addEventListener("click", addFood);
+document.getElementById("analyzeBtn").addEventListener("click", analyze);
+
+/* keep language across reloads */
+applyTranslations();
+</script>
 
 </body>
 </html>
