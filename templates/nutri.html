@@ -399,6 +399,7 @@ async function analyze() {
     renderOutput(data, city);
     currentAnalysisData = data;
     document.getElementById("consultBtn").style.display = "inline-block";
+    chatWidget.style.display = "flex"; // Show the chatbot
   } catch (err) {
     outEl.innerHTML = `<p style="color:red;">${escapeHtml(translations[currentLang].errorPrefix)} ${escapeHtml(err.message || String(err))}</p>`;
     currentAnalysisData = null;
@@ -470,9 +471,120 @@ document.getElementById("addBtn").addEventListener("click", addFood);
 document.getElementById("analyzeBtn").addEventListener("click", analyze);
 document.getElementById("consultBtn").addEventListener("click", consultAI);
 
+
+// --- CHATBOT SCRIPT ---
+const chatWidget = document.getElementById("chat-widget");
+const chatHeader = document.getElementById("chat-header");
+const chatToggleBtn = document.getElementById("chat-toggle-btn");
+const chatMessages = document.getElementById("chat-messages");
+const chatInput = document.getElementById("chat-input");
+const chatSendBtn = document.getElementById("chat-send-btn");
+const suggestionBtns = document.querySelectorAll(".suggestion-btn");
+
+// Hide chat widget initially
+chatWidget.style.display = "none";
+
+// Toggle minimize/maximize
+chatToggleBtn.addEventListener("click", () => {
+  chatWidget.classList.toggle("minimized");
+  chatToggleBtn.textContent = chatWidget.classList.contains("minimized") ? "+" : "-";
+});
+
+// Function to add a message to the chat window
+function addMessage(sender, text) {
+  const messageEl = document.createElement("div");
+  messageEl.classList.add("message", sender);
+  messageEl.textContent = text;
+  chatMessages.appendChild(messageEl);
+  chatMessages.scrollTop = chatMessages.scrollHeight; // Auto-scroll
+}
+
+// Function to handle sending a message
+async function sendMessage() {
+  const messageText = chatInput.value.trim();
+  if (!messageText) return;
+
+  addMessage("user", messageText);
+  chatInput.value = "";
+
+  const typingIndicator = document.createElement("div");
+  typingIndicator.classList.add("message", "bot");
+  typingIndicator.textContent = "...";
+  chatMessages.appendChild(typingIndicator);
+  chatMessages.scrollTop = chatMessages.scrollHeight;
+
+  if (!currentAnalysisData) {
+    typingIndicator.textContent = "Please run a nutrition analysis first to get personalized advice.";
+    return;
+  }
+
+  const payload = {
+    message: messageText,
+    analysis_data: currentAnalysisData,
+    lang: currentLang
+  };
+
+  try {
+    const res = await fetch("/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    });
+    const data = await res.json();
+
+    typingIndicator.remove();
+
+    if (data.ok) {
+      addMessage("bot", data.reply);
+    } else {
+      addMessage("bot", `Error: ${data.error || 'Something went wrong.'}`);
+    }
+  } catch (err) {
+    typingIndicator.remove();
+    addMessage("bot", `Error: ${err.message || 'Could not connect to the server.'}`);
+  }
+}
+
+// Event Listeners
+chatSendBtn.addEventListener("click", sendMessage);
+chatInput.addEventListener("keydown", (e) => {
+  if (e.key === "Enter") {
+    e.preventDefault();
+    sendMessage();
+  }
+});
+
+suggestionBtns.forEach(btn => {
+  btn.addEventListener("click", () => {
+    chatInput.value = btn.textContent;
+    sendMessage();
+  });
+});
+// --- END CHATBOT SCRIPT ---
+
+
 /* keep language across reloads */
 applyTranslations();
 </script>
-
+<!-- Chatbot container -->
+  <div id="chat-widget" class="chat-widget">
+    <div id="chat-header" class="chat-header">
+      <span id="chat-title">AI Dietician Assistant</span>
+      <button id="chat-toggle-btn">-</button>
+    </div>
+    <div id="chat-body" class="chat-body">
+      <div id="chat-messages" class="chat-messages"></div>
+      <div id="chat-suggestions" class="chat-suggestions">
+        <button class="suggestion-btn">What should I eat for breakfast?</button>
+        <button class="suggestion-btn">Suggest a meal plan</button>
+        <button class="suggestion-btn">How to improve my protein intake?</button>
+        <button class="suggestion-btn">Vegetarian options for my deficiencies</button>
+      </div>
+      <div id="chat-input-container" class="chat-input-container">
+        <input type="text" id="chat-input" placeholder="Type your message..." />
+        <button id="chat-send-btn">Send</button>
+      </div>
+    </div>
+  </div>
 </body>
 </html>
