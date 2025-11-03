@@ -326,6 +326,73 @@ def consult():
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)}), 500
 
+# ----------------- Gemini Chatbot -----------------
+
+def _format_gemini_chat_prompt(message: str, analysis: Dict[str, Any], lang: str = "en") -> str:
+    """
+    Formats a prompt for the Gemini chat model, including nutrition context.
+    """
+    lines = []
+    lines.append("You are a helpful and friendly AI Dietician Assistant.")
+    lines.append("Your goal is to answer user questions about their nutrition, suggest meals, and provide advice based on their specific dietary analysis.")
+    lines.append("Use the provided nutrition analysis as the primary context for your answers.")
+    lines.append("\n--- NUTRITION ANALYSIS CONTEXT ---")
+    if analysis and analysis.get("total_nutrients"):
+        lines.append("\n[Total Nutrients]")
+        for k, v in analysis["total_nutrients"].items():
+            lines.append(f"- {k}: {v}")
+    if analysis and analysis.get("deficient"):
+        lines.append("\n[Deficient Nutrients]")
+        for k, v in analysis["deficient"].items():
+            lines.append(f"- {k}: need {v} more")
+    lines.append("\n--- END CONTEXT ---")
+    lines.append("\nNow, please answer the user's question concisely and helpfully.")
+    if lang and lang != "en":
+        lines.append(f"Respond in the following language: {lang}")
+    lines.append(f"\nUser says: \"{message}\"")
+    return "\n".join(lines)
+
+
+def call_gemini_chat(message: str, analysis: Dict[str, Any], lang: str="en", model: str=DEFAULT_GEMINI_MODEL) -> str:
+    """
+    Calls the Gemini API with a formatted chat prompt.
+    """
+    client = _ensure_gemini_client()
+    prompt = _format_gemini_chat_prompt(message, analysis, lang)
+    resp = client.models.generate_content(model=model, contents=prompt)
+    try:
+        return resp.text if hasattr(resp, "text") else str(resp)
+    except Exception:
+        # Fallback for any response structure issues
+        return str(resp)
+
+
+@app.route("/chat", methods=["POST"])
+def chat():
+    """
+    Chat endpoint for the AI Dietician Assistant.
+    Accepts a user message and nutrition analysis data.
+    """
+    data = request.get_json() or {}
+    message = data.get("message")
+    analysis_data = data.get("analysis_data")
+    lang = data.get("lang", "en")
+
+    if not message:
+        return jsonify({"ok": False, "error": "No message provided"}), 400
+
+    # Make sure Gemini SDK & key exist
+    if genai is None:
+        return jsonify({"ok": False, "error": "Gemini SDK (google-genai) not installed on server. Run: pip install google-genai"}), 500
+    if not GEMINI_API_KEY:
+        return jsonify({"ok": False, "error": "GEMINI_API_KEY not set in environment (.env or system env)."}), 500
+
+    try:
+        chat_reply = call_gemini_chat(message, analysis_data, lang=lang)
+        return jsonify({"ok": True, "reply": chat_reply})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
 if __name__ == "__main__":
     # for dev only; in production use gunicorn
     app.run(host="0.0.0.0", port=int(os.getenv("PORT", "5000")), debug=True)
